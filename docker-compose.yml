@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:15
+    container_name: boqmaster-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: boq
+      POSTGRES_PASSWORD: boqpass
+      POSTGRES_DB: boqmaster
+    ports:
+      - "5433:5432"
+    volumes:
+      - boqmaster_pgdata:/var/lib/postgresql/data
+
+volumes:
+  boqmaster_pgdata:
