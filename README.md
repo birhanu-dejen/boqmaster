@@ -92,9 +92,12 @@ To design and develop a web-based system that facilitates construction cost esti
 
 ### Backend
 
-- NestJS
-- TypeScript
-- Prisma ORM
+- FastAPI
+- Python 3.11+
+- SQLAlchemy (ORM)
+- Alembic (database migrations)
+- Pydantic (data validation and schemas)
+- Uvicorn (ASGI server)
 
 ### Database
 
@@ -102,11 +105,13 @@ To design and develop a web-based system that facilitates construction cost esti
 
 ### Authentication
 
-- JWT Authentication
+- JWT Authentication (PyJWT)
+- Password hashing with Passlib (bcrypt)
 
 ### Development Tools
 
-- PNPM
+- PNPM (frontend)
+- pip / venv (backend)
 - Git
 - GitHub
 
@@ -118,11 +123,13 @@ To design and develop a web-based system that facilitates construction cost esti
 Client (Next.js)
         │
         ▼
-REST API (NestJS)
+REST API (FastAPI)
         │
         ▼
 PostgreSQL Database
 ```
+
+FastAPI automatically generates interactive API documentation at `/docs` (Swagger UI) and `/redoc`.
 
 ---
 
@@ -130,8 +137,18 @@ PostgreSQL Database
 
 ```text
 boqmaster/
-├── client/
-├── server/
+├── client/                 # Next.js frontend
+├── server/                 # FastAPI backend
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── core/           # config, security, JWT
+│   │   ├── models/         # SQLAlchemy models
+│   │   ├── schemas/        # Pydantic schemas
+│   │   ├── routers/        # API routes
+│   │   └── services/       # business logic
+│   ├── alembic/            # migrations
+│   ├── requirements.txt
+│   └── .env
 ├── docs/
 ├── README.md
 ├── package.json
@@ -149,22 +166,48 @@ git clone https://github.com/your-username/boqmaster.git
 cd boqmaster
 ```
 
-### Install Dependencies
+### Frontend Setup
 
 ```bash
+cd client
 pnpm install
 ```
 
-### Configure Environment Variables
+Create `client/.env.local`:
 
-Create `.env` files for both client and server.
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-Example server configuration:
+### Backend Setup
+
+```bash
+cd server
+python -m venv venv
+
+# Linux / macOS
+source venv/bin/activate
+
+# Windows
+venv\Scripts\activate
+
+pip install -r requirements.txt
+```
+
+Create `server/.env`:
 
 ```env
 DATABASE_URL=postgresql://username:password@localhost:5432/boqmaster
 JWT_SECRET=your-secret-key
-PORT=3001
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+PORT=8000
+```
+
+Run database migrations:
+
+```bash
+alembic upgrade head
 ```
 
 ### Run Development Servers
@@ -173,7 +216,7 @@ Backend:
 
 ```bash
 cd server
-pnpm start:dev
+uvicorn app.main:app --reload --port 8000
 ```
 
 Frontend:
@@ -182,6 +225,8 @@ Frontend:
 cd client
 pnpm dev
 ```
+
+The API documentation will be available at `http://localhost:8000/docs`.
 
 ---
 
@@ -207,4 +252,4 @@ Civil Engineering Student and Full-Stack Developer
 
 Graduation Thesis Project
 
-2026b
+2026
