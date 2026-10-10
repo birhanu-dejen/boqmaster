@@ -8,7 +8,8 @@ from app.core.deps import get_current_user, require_roles
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import Role, User
 from app.schemas.user import Token, UserCreate, UserOut
-
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from app.core.config import settings
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -32,8 +33,11 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    # The form field is called "username" but we use it for the email
+def login(
+    response: Response,
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
     user = db.scalar(select(User).where(User.email == form.username.lower()))
     if (
         not user
@@ -45,8 +49,23 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return Token(access_token=create_access_token(str(user.id), user.role))
 
+    token = create_access_token(str(user.id), user.role)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    return Token(access_token=token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):

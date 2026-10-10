@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { Eye, EyeOff, HardHat, Loader2 } from "lucide-react";
-
+import { useRouter } from "next/navigation";
+import { login } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,7 +29,7 @@ export function LoginForm({
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-
+  const router = useRouter();
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -39,12 +40,11 @@ export function LoginForm({
     const password = String(formData.get("password"));
 
     try {
-      // TODO: replace with your NestJS endpoint, e.g. POST /auth/login
-      console.log({ email, password });
-      await new Promise((r) => setTimeout(r, 1000));
-    } catch {
-      setError("Invalid email or password. Please try again.");
-    } finally {
+      await login(email, password);
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed.");
       setIsLoading(false);
     }
   }

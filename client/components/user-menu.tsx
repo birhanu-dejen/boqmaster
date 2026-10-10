@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { LogOut } from "lucide-react";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,21 +13,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-// TODO: replace with the real logged-in user from your auth state
-const user = {
-  name: "Birhanu Dejen",
-  email: "admin@boqmaster.com",
-  role: "Admin",
-};
+import { getMe, logout, type User } from "@/lib/auth";
 
 export function UserMenu() {
-  const initial = user.name.charAt(0).toUpperCase();
+  const [user, setUser] = React.useState<User | null>(null);
 
-  function handleLogout() {
-    // TODO: clear the token and redirect to /login
-    console.log("logout");
-  }
+  React.useEffect(() => {
+    getMe().then(setUser);
+  }, []);
+
+  const initial = user?.full_name.charAt(0).toUpperCase() ?? "?";
+  const role = user
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : "";
 
   return (
     <DropdownMenu>
@@ -44,15 +43,15 @@ export function UserMenu() {
       <DropdownMenuContent align="end" side="bottom" className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuLabel className="font-normal">
-            <p className="text-sm font-medium">{user.name}</p>
-            <p className="text-xs text-muted-foreground">{user.email}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Role: {user.role}
+            <p className="text-sm font-medium">
+              {user?.full_name ?? "Loading..."}
             </p>
+            <p className="text-xs text-muted-foreground">{user?.email}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Role: {role}</p>
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleLogout}>
+        <DropdownMenuItem onClick={logout}>
           <LogOut className="mr-2 size-4" />
           Log out
         </DropdownMenuItem>
