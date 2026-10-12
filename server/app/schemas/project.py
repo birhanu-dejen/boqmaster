@@ -21,3 +21,4 @@ class ProjectRead(BaseModel):
     status: str
     owner_id: int
     created_at: datetime
+    updated_at: datetime

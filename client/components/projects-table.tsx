@@ -16,12 +16,6 @@ import {
 import { ProjectStatusBadge } from "@/components/project-status-badge";
 import type { Project } from "@/types/project";
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "ETB",
-  maximumFractionDigits: 0,
-});
-
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", {
     day: "2-digit",
@@ -60,7 +54,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
               <TableHead>Client</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Total cost</TableHead>
+
               <TableHead>Updated</TableHead>
             </TableRow>
           </TableHeader>
@@ -68,7 +62,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
             {filtered.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={5}
                   className="h-24 text-center text-muted-foreground"
                 >
                   No projects found.
@@ -90,9 +84,7 @@ export function ProjectsTable({ projects }: { projects: Project[] }) {
                   <TableCell>
                     <ProjectStatusBadge status={p.status} />
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {money.format(p.totalCost)}
-                  </TableCell>
+
                   <TableCell className="text-muted-foreground">
                     {formatDate(p.updatedAt)}
                   </TableCell>

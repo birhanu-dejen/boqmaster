@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 
 class ProjectStatus(str, enum.Enum):
-    active = "active"
+    draft = "draft"
+    in_progress = "in_progress"
     completed = "completed"
     archived = "archived"
 
@@ -26,7 +27,7 @@ class Project(Base):
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
     client_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(
-        String(20), default=ProjectStatus.active.value
+        String(20), default=ProjectStatus.draft.value
     )
     owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(

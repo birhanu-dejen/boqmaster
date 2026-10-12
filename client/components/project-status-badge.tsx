@@ -13,7 +13,13 @@ const config: Record<ProjectStatus, { label: string; className: string }> = {
 };
 
 export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
-  const { label, className } = config[status];
+  const fallback = {
+    label: "Unknown",
+    className: "bg-slate-100 text-slate-700",
+  };
+
+  // inside the component:
+  const { label, className } = config[status] ?? fallback;
   return (
     <Badge variant="outline" className={cn("border-transparent", className)}>
       {label}

@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 
 import { NewProjectDialog } from "@/components/new-project-dialog";
 import { ProjectsTable } from "@/components/projects-table";
-import { getProjects } from "@/lib/api/projects";
-
+import { getProjects } from "@/lib/api/projects.server";
 export const metadata: Metadata = { title: "Projects" };
 
 export default async function ProjectsPage() {

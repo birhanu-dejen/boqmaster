@@ -18,29 +18,21 @@ export type Project = {
   created_at: string;
 };
 
-function authHeaders(): HeadersInit {
-  // Use the same place your login page stores the JWT
-  const token = localStorage.getItem("access_token");
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
 export async function createProject(
   input: CreateProjectInput,
 ): Promise<Project> {
   const res = await fetch(`${API_URL}/projects`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: { "Content-Type": "application/json" },
+    credentials: "include", // browser sends the httpOnly cookie
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(`Failed to create project (${res.status})`);
-  return res.json();
-}
 
-export async function getProjects(): Promise<Project[]> {
-  const res = await fetch(`${API_URL}/projects`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`Failed to load projects (${res.status})`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    const detail =
+      typeof err?.detail === "string" ? err.detail : `status ${res.status}`;
+    throw new Error(`Failed to create project: ${detail}`);
+  }
   return res.json();
 }
