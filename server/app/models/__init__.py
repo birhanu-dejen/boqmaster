@@ -1,1 +1,2 @@
-from app.models.user import User  # noqa: F401
+from .user import User
+from .project import Project
