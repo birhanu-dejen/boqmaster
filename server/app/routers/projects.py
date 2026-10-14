@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
+from fastapi import HTTPException
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.project import Project
@@ -41,3 +41,13 @@ def list_projects(
         .order_by(Project.created_at.desc())
     )
     return db.scalars(stmt).all()
+@router.get("/{project_id}", response_model=ProjectRead)
+def get_project(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = db.get(Project, project_id)
+    if not project or project.owner_id != current_user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+    return project

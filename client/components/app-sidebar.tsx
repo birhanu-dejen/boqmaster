@@ -2,18 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  FileBarChart,
-  FolderKanban,
-  HardHat,
-  LayoutDashboard,
-  Users,
-} from "lucide-react";
+import { FolderKanban, HardHat, LayoutDashboard, Users } from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -26,7 +19,6 @@ import {
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", href: "/projects", icon: FolderKanban },
-  { title: "Reports", href: "/reports", icon: FileBarChart },
 ];
 
 const adminNav = [{ title: "Users", href: "/users", icon: Users }];

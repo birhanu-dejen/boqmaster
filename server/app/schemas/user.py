@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
-
+from datetime import datetime
 from app.models.user import Role
 
 
@@ -17,7 +17,7 @@ class UserOut(BaseModel):
     email: EmailStr
     role: Role
     is_active: bool
-
+    created_at: datetime
 
 class Token(BaseModel):
     access_token: str
