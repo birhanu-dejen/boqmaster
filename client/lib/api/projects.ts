@@ -7,6 +7,11 @@ export type CreateProjectInput = {
   description?: string;
 };
 
+export type CreateBoqInput = {
+  name: string;
+  description?: string;
+};
+
 export type Project = {
   id: number;
   name: string;
@@ -33,6 +38,26 @@ export async function createProject(
     const detail =
       typeof err?.detail === "string" ? err.detail : `status ${res.status}`;
     throw new Error(`Failed to create project: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function createBoq(projectId: string, input: CreateBoqInput) {
+  const res = await fetch(
+    `${API_URL}/projects/${encodeURIComponent(projectId)}/boqs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(input),
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    const detail =
+      typeof err?.detail === "string" ? err.detail : `status ${res.status}`;
+    throw new Error(`Failed to create BOQ: ${detail}`);
   }
   return res.json();
 }

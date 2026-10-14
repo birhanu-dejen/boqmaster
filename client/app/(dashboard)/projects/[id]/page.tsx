@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { CalendarDays, MapPin, User } from "lucide-react";
+
+import { BoqsPanel } from "@/components/boqs-panel";
 import { ProjectStatusBadge } from "@/components/project-status-badge";
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getProject } from "@/lib/api/projects.server";
+import { getProject, getProjectBoqs } from "@/lib/api/projects.server";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -47,7 +48,10 @@ function Detail({
 
 export default async function ProjectDetailPage({ params }: Props) {
   const { id } = await params;
-  const project = await getProject(id);
+  const [project, boqs] = await Promise.all([
+    getProject(id),
+    getProjectBoqs(id),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -59,10 +63,6 @@ export default async function ProjectDetailPage({ params }: Props) {
             </h1>
             <ProjectStatusBadge status={project.status} />
           </div>
-          <p className="text-sm text-muted-foreground">
-            Created {formatDate(project.createdAt)} · Updated{" "}
-            {formatDate(project.updatedAt)}
-          </p>
         </div>
       </div>
 
@@ -92,13 +92,11 @@ export default async function ProjectDetailPage({ params }: Props) {
         </TabsContent>
 
         <TabsContent value="boqs">
-          <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center">
-            <p className="text-sm font-medium">No bills of quantities yet</p>
-            <p className="text-sm text-muted-foreground">
-              BOQs you create for this project will appear here.
-            </p>
-            <Button disabled>New BOQ</Button>
-          </div>
+          <BoqsPanel
+            boqs={boqs}
+            projectId={project.id}
+            projectName={project.name}
+          />
         </TabsContent>
       </Tabs>
     </div>
