@@ -125,7 +125,12 @@ export function BoqsPanel({
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((b) => (
-              <BoqCard key={b.id} boq={b} projectName={projectName} />
+              <BoqCard
+                key={b.id}
+                boq={b}
+                projectId={projectId}
+                projectName={projectName}
+              />
             ))}
           </div>
           <p className="text-center text-xs text-muted-foreground">

@@ -34,9 +34,11 @@ function formatDate(iso?: string) {
 
 export function BoqCard({
   boq,
+  projectId,
   projectName,
 }: {
   boq: Boq;
+  projectId: string;
   projectName: string;
 }) {
   const s = statusStyles[boq.status] ?? statusStyles.draft;
@@ -50,7 +52,7 @@ export function BoqCard({
       )}
     >
       <Link
-        href={`/projects/${boq.projectId}/boqs/${boq.id}`}
+        href={`/projects/${projectId}/boqs/${boq.id}`}
         className="flex-1 p-4"
       >
         <div className="flex items-start justify-between">
