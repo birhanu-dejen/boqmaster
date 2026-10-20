@@ -8,7 +8,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.models.project import Project
-
+    from app.models.boq_section import BoqSection  
 
 class Boq(Base):
     __tablename__ = "boqs"
@@ -18,6 +18,14 @@ class Boq(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255))
+    currency: Mapped[str] = mapped_column(
+    String(3), default="ETB", server_default="ETB"
+)
+    sections: Mapped[list["BoqSection"]] = relationship(
+        back_populates="boq",
+        cascade="all, delete-orphan",
+        order_by="BoqSection.sort_order",
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="draft")
     created_at: Mapped[datetime] = mapped_column(

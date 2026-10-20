@@ -56,19 +56,6 @@ export function BoqToolbar({
           <Layers className="size-3.5" />
           Add section
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={onToggleCollapseAll}
-        >
-          {allCollapsed ? (
-            <ChevronsUpDown className="size-3.5" />
-          ) : (
-            <ChevronsDownUp className="size-3.5" />
-          )}
-          {allCollapsed ? "Expand all" : "Collapse all"}
-        </Button>
       </div>
 
       {/* Row 2: search + filters */}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -19,7 +20,6 @@ import {
   formatMoney,
   hasError,
   positionTotal,
-  sectionTotal,
   type BoqPosition,
   type BoqSection,
 } from "@/lib/boq";
@@ -31,51 +31,132 @@ export type PositionPatch = Partial<
     "ordinal" | "description" | "unit" | "quantity" | "unitRate"
   >
 >;
+export type SectionPatch = Partial<Pick<BoqSection, "ordinal" | "title">>;
+export type DropPos = "before" | "after";
 
 /* ── Section header row ─────────────────────────────────────────── */
 
 export function SectionRow({
   section,
+  depth = 0,
+  onChange,
   collapsed,
+  total,
   percentOfTotal,
+  dragging = false,
+  droppable = false,
+  dropPos = null,
   onToggle,
   onAddPosition,
   onAddSub,
   onDelete,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
 }: {
   section: BoqSection;
+  depth?: number;
   collapsed: boolean;
+  total: number;
   percentOfTotal: number;
+  dragging?: boolean;
+  onChange: (patch: SectionPatch) => void;
+  droppable?: boolean;
+  dropPos?: DropPos | null;
   onToggle: () => void;
   onAddPosition: () => void;
   onAddSub?: () => void;
   onDelete: () => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  onDragOver?: (pos: DropPos) => void;
+  onDrop?: () => void;
 }) {
+  const rowRef = useRef<HTMLDivElement>(null);
   const FolderIcon = collapsed ? Folder : FolderOpen;
+  const count = section.positions.length;
+
   return (
-    <div className="flex items-center gap-3 border-y bg-muted/50 px-3 py-2.5">
-      <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" />
-      <FolderIcon className="size-4 shrink-0 text-primary" />
+    <div
+      ref={rowRef}
+      onDragOver={(e) => {
+        if (!droppable) return;
+        e.preventDefault(); // allow drop
+        const rect = e.currentTarget.getBoundingClientRect();
+        onDragOver?.(
+          e.clientY < rect.top + rect.height / 2 ? "before" : "after",
+        );
+      }}
+      onDrop={(e) => {
+        if (!droppable) return;
+        e.preventDefault();
+        onDrop?.();
+      }}
+      className={cn(
+        "flex items-center gap-3 border-y bg-muted/50 py-2.5 pr-3",
+        dragging && "opacity-40",
+        dropPos === "before" && "shadow-[inset_0_2px_0_0_var(--color-primary)]",
+        dropPos === "after" && "shadow-[inset_0_-2px_0_0_var(--color-primary)]",
+      )}
+      style={{ paddingLeft: 12 + depth * 24 }}
+    >
+      {/* Drag handle */}
+      <span
+        draggable
+        title="Drag to reorder"
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", section.id); // required by Firefox
+          if (rowRef.current)
+            e.dataTransfer.setDragImage(rowRef.current, 16, 16);
+          onDragStart?.();
+        }}
+        onDragEnd={() => onDragEnd?.()}
+        className="cursor-grab active:cursor-grabbing"
+      >
+        <GripVertical className="size-4 shrink-0 text-muted-foreground" />
+      </span>
+
+      {/* Folder icon is the toggle */}
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={!collapsed}
         aria-label={collapsed ? "Expand section" : "Collapse section"}
-        className="rounded-sm p-0.5 text-muted-foreground hover:bg-muted"
+        title={collapsed ? "Expand section" : "Collapse section"}
+        className="shrink-0 rounded-sm p-0.5 text-primary hover:bg-muted"
       >
+        <FolderIcon className="size-4" />
+      </button>
+
+      {/* State indicator only, not clickable */}
+      <span aria-hidden="true" className="text-muted-foreground">
         {collapsed ? (
           <ChevronRight className="size-4" />
         ) : (
           <ChevronDown className="size-4" />
         )}
-      </button>
-
-      <span className="font-mono text-xs font-semibold text-primary">
-        {section.ordinal}
       </span>
+
+      <div className="w-20 shrink-0">
+        <TextCell
+          value={section.ordinal}
+          onCommit={(v) => onChange({ ordinal: v })}
+          className="font-mono text-xs font-semibold text-primary"
+        />
+      </div>
+      <div className="min-w-32 max-w-sm flex-1">
+        <TextCell
+          value={section.title}
+          placeholder="Section title"
+          onCommit={(v) => onChange({ title: v })}
+          className="text-sm font-semibold"
+        />
+      </div>
       <span className="text-sm font-semibold">{section.title}</span>
       <Badge variant="secondary" className="font-normal">
-        {section.positions.length} items
+        {count} {count === 1 ? "item" : "items"}
       </Badge>
 
       <div className="ml-auto flex items-center gap-2">
@@ -111,7 +192,7 @@ export function SectionRow({
           {Math.round(percentOfTotal)}%
         </span>
         <span className="w-36 text-right text-sm font-semibold tabular-nums">
-          {formatMoney(sectionTotal(section))}
+          {formatMoney(total)}
         </span>
       </div>
     </div>

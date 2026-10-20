@@ -2,22 +2,31 @@
 
 import { useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { boqApi } from "@/lib/api/boq";
 import {
   BOQ_COLS,
+  flattenSections,
   formatMoney,
   grandTotal,
-  initialSections,
+  hasCollapsedAncestor,
   matchesFilter,
+  moveSection,
   nextPositionOrdinal,
   nextSectionOrdinal,
-  sectionTotal,
+  nextSubOrdinal,
+  subtreeIds,
+  subtreeTotal,
   type BoqFilter,
   type BoqSection,
 } from "@/lib/boq";
 import { cn } from "@/lib/utils";
 import { BoqToolbar } from "./boq-toolbar";
-import { PositionRow, SectionRow, type PositionPatch } from "./boq-section";
-
+import {
+  PositionRow,
+  SectionRow,
+  type PositionPatch,
+  type SectionPatch,
+} from "./boq-section";
 const HEADERS = [
   "",
   "Pos.",
@@ -38,15 +47,25 @@ function toggleIn<T>(set: Set<T>, v: T): Set<T> {
 }
 
 export function BoqGrid({
-  initial = initialSections,
+  boqId,
+  initial,
 }: {
-  initial?: BoqSection[];
+  boqId: string;
+  initial: BoqSection[];
 }) {
   const [sections, setSections] = useState<BoqSection[]>(initial);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<Set<BoqFilter>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+
+  // drag and drop
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [over, setOver] = useState<{
+    id: string;
+    pos: "before" | "after";
+  } | null>(null);
 
   const total = useMemo(() => grandTotal(sections), [sections]);
   const positionCount = useMemo(
@@ -54,23 +73,37 @@ export function BoqGrid({
     [sections],
   );
 
-  /* Rows visible after search and filters. Sections with no match are hidden
-     only while a search or filter is active. */
+  /* Rows in tree order (sub-sections under their parent), after search and
+     filters. While narrowing, sections with no match are hidden, but the
+     ancestors of a matching sub-section stay visible. */
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const narrowing = q !== "" || filters.size > 0;
-    return sections
-      .map((section) => ({
-        section,
-        positions: section.positions.filter(
-          (p) =>
-            (q === "" ||
-              p.description.toLowerCase().includes(q) ||
-              p.ordinal.toLowerCase().includes(q)) &&
-            [...filters].every((f) => matchesFilter(p, f)),
-        ),
-      }))
-      .filter((v) => !narrowing || v.positions.length > 0);
+    const byId = new Map(sections.map((s) => [s.id, s]));
+
+    const rows = flattenSections(sections).map(({ section, depth }) => ({
+      section,
+      depth,
+      positions: section.positions.filter(
+        (p) =>
+          (q === "" ||
+            p.description.toLowerCase().includes(q) ||
+            p.ordinal.toLowerCase().includes(q)) &&
+          [...filters].every((f) => matchesFilter(p, f)),
+      ),
+    }));
+    if (!narrowing) return rows;
+
+    const keep = new Set<string>();
+    for (const r of rows) {
+      if (r.positions.length === 0) continue;
+      let s: BoqSection | undefined = r.section;
+      while (s) {
+        keep.add(s.id);
+        s = s.parentId ? byId.get(s.parentId) : undefined;
+      }
+    }
+    return rows.filter((r) => keep.has(r.section.id));
   }, [sections, search, filters]);
 
   const visibleIds = useMemo(
@@ -84,13 +117,37 @@ export function BoqGrid({
   const allCollapsed =
     sections.length > 0 && sections.every((s) => collapsed.has(s.id));
 
+  /* ── Server calls ────────────────────────────────────────────── */
+
+  /** Runs an API call; on failure shows the message instead of throwing. */
+  async function attempt<T>(
+    fn: () => Promise<T>,
+  ): Promise<{ ok: true; data: T } | { ok: false }> {
+    setError(null);
+    try {
+      return { ok: true, data: await fn() };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+      return { ok: false };
+    }
+  }
+
   /* ── Mutations ───────────────────────────────────────────────── */
 
-  const patchPosition = (
+  const expand = (sectionId: string) =>
+    setCollapsed((prev) => {
+      if (!prev.has(sectionId)) return prev;
+      const n = new Set(prev);
+      n.delete(sectionId);
+      return n;
+    });
+
+  const patchPosition = async (
     sectionId: string,
     posId: string,
     patch: PositionPatch,
-  ) =>
+  ) => {
+    const before = sections;
     setSections((prev) =>
       prev.map((s) =>
         s.id !== sectionId
@@ -102,50 +159,68 @@ export function BoqGrid({
               ),
             },
       ),
+    ); // instant update
+    const r = await attempt(() => boqApi.updatePosition(posId, patch));
+    if (!r.ok) setSections(before); // roll back if the server refused
+  };
+  const patchSection = async (sectionId: string, patch: SectionPatch) => {
+    const before = sections;
+    setSections((prev) =>
+      prev.map((s) => (s.id === sectionId ? { ...s, ...patch } : s)),
     );
-
-  const addPosition = (sectionId: string) => {
+    const r = await attempt(() => boqApi.updateSection(sectionId, patch));
+    if (!r.ok) setSections(before);
+  };
+  const addPosition = async (sectionId: string) => {
+    const section = sections.find((s) => s.id === sectionId);
+    if (!section) return;
+    const r = await attempt(() =>
+      boqApi.addPosition(sectionId, {
+        ordinal: nextPositionOrdinal(section),
+        description: "",
+        unit: "m²",
+        quantity: 0,
+        unitRate: 0,
+      }),
+    );
+    if (!r.ok) return;
     setSections((prev) =>
       prev.map((s) =>
-        s.id !== sectionId
-          ? s
-          : {
-              ...s,
-              positions: [
-                ...s.positions,
-                {
-                  id: crypto.randomUUID(),
-                  ordinal: nextPositionOrdinal(s),
-                  description: "",
-                  unit: "m²",
-                  quantity: 0,
-                  unitRate: 0,
-                },
-              ],
-            },
+        s.id === sectionId ? { ...s, positions: [...s.positions, r.data] } : s,
       ),
     );
-    // make sure the new row is visible
-    setCollapsed((prev) => {
-      if (!prev.has(sectionId)) return prev;
-      const n = new Set(prev);
-      n.delete(sectionId);
-      return n;
-    });
+    expand(sectionId); // make sure the new row is visible
   };
 
-  const addSection = () =>
-    setSections((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        ordinal: nextSectionOrdinal(prev),
+  const addSection = async () => {
+    const r = await attempt(() =>
+      boqApi.addSection(boqId, {
+        ordinal: nextSectionOrdinal(sections),
         title: "New section",
-        positions: [],
-      },
-    ]);
+        parentId: null,
+      }),
+    );
+    if (r.ok) setSections((prev) => [...prev, r.data]);
+  };
 
-  const deletePosition = (sectionId: string, posId: string) => {
+  const addSub = async (parentId: string) => {
+    const parent = sections.find((s) => s.id === parentId);
+    if (!parent) return;
+    const r = await attempt(() =>
+      boqApi.addSection(boqId, {
+        ordinal: nextSubOrdinal(sections, parent),
+        title: "New sub-section",
+        parentId,
+      }),
+    );
+    if (!r.ok) return;
+    setSections((prev) => [...prev, r.data]);
+    expand(parentId); // make sure the new sub-section is visible
+  };
+
+  const deletePosition = async (sectionId: string, posId: string) => {
+    const r = await attempt(() => boqApi.deletePosition(posId));
+    if (!r.ok) return;
     setSections((prev) =>
       prev.map((s) =>
         s.id === sectionId
@@ -160,28 +235,66 @@ export function BoqGrid({
     });
   };
 
-  const deleteSection = (sectionId: string) => {
+  const deleteSection = async (sectionId: string) => {
     const section = sections.find((s) => s.id === sectionId);
     if (!section) return;
-    const count = section.positions.length;
+    const ids = new Set(subtreeIds(sections, sectionId));
+    const doomed = sections.filter((s) => ids.has(s.id));
+    const count = doomed.reduce((n, s) => n + s.positions.length, 0);
+    const subs = doomed.length - 1;
     if (
-      count > 0 &&
+      (count > 0 || subs > 0) &&
       !window.confirm(
-        `Delete section ${section.ordinal} and its ${count} position${count === 1 ? "" : "s"}?`,
+        `Delete section ${section.ordinal}, ${subs} sub-section${subs === 1 ? "" : "s"} and ${count} position${count === 1 ? "" : "s"}?`,
       )
     ) {
       return;
     }
-    setSections((prev) => prev.filter((s) => s.id !== sectionId));
+    const r = await attempt(() => boqApi.deleteSection(sectionId)); // server deletes the subtree
+    if (!r.ok) return;
+    setSections((prev) => prev.filter((s) => !ids.has(s.id)));
     setSelected((prev) => {
       const n = new Set(prev);
-      section.positions.forEach((p) => n.delete(p.id));
+      doomed.forEach((s) => s.positions.forEach((p) => n.delete(p.id)));
       return n;
     });
   };
 
+  const endDrag = () => {
+    setDragId(null);
+    setOver(null);
+  };
+
+  const handleDrop = async () => {
+    if (!dragId || !over) {
+      endDrag();
+      return;
+    }
+    const before = sections;
+    const next = moveSection(sections, dragId, over.id, over.pos);
+    endDrag();
+    if (next === before) return;
+    setSections(next);
+    const r = await attempt(() =>
+      boqApi.reorderSections(
+        boqId,
+        next.map((s) => ({ id: s.id, parentId: s.parentId ?? null })),
+      ),
+    );
+    if (!r.ok) setSections(before);
+  };
+
   return (
     <div className="space-y-3">
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </div>
+      )}
+
       <div className="flex flex-wrap items-stretch gap-3">
         <BoqToolbar
           search={search}
@@ -265,24 +378,42 @@ export function BoqGrid({
                 : "No positions match. Clear the search or filters to see all lines."}
             </p>
           ) : (
-            visible.map(({ section, positions }) => {
+            visible.map(({ section, depth, positions }) => {
+              if (hasCollapsedAncestor(sections, section, collapsed))
+                return null;
               const isCollapsed = collapsed.has(section.id);
+              const sTotal = subtreeTotal(sections, section.id);
               return (
                 <div key={section.id}>
                   <SectionRow
                     section={section}
+                    depth={depth}
+                    onChange={(patch) => patchSection(section.id, patch)}
                     collapsed={isCollapsed}
-                    percentOfTotal={
-                      total > 0 ? (sectionTotal(section) / total) * 100 : 0
+                    total={sTotal}
+                    percentOfTotal={total > 0 ? (sTotal / total) * 100 : 0}
+                    dragging={dragId === section.id}
+                    droppable={
+                      dragId !== null &&
+                      !subtreeIds(sections, dragId).includes(section.id)
                     }
+                    dropPos={over?.id === section.id ? over.pos : null}
                     onToggle={() =>
                       setCollapsed((prev) => toggleIn(prev, section.id))
                     }
                     onAddPosition={() => addPosition(section.id)}
-                    onAddSub={() => {
-                      /* Nested sections need a parentId on BoqSection. Add it when you wire the API. */
-                    }}
+                    onAddSub={() => addSub(section.id)}
                     onDelete={() => deleteSection(section.id)}
+                    onDragStart={() => setDragId(section.id)}
+                    onDragEnd={endDrag}
+                    onDragOver={(pos) =>
+                      setOver((o) =>
+                        o?.id === section.id && o.pos === pos
+                          ? o
+                          : { id: section.id, pos },
+                      )
+                    }
+                    onDrop={handleDrop}
                   />
                   {!isCollapsed &&
                     positions.map((p) => (

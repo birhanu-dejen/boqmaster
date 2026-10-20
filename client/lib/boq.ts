@@ -13,6 +13,7 @@ export type BoqSection = {
   id: string;
   ordinal: string;
   title: string;
+  parentId?: string | null;
   positions: BoqPosition[];
 };
 
@@ -48,46 +49,6 @@ export function matchesFilter(p: BoqPosition, f: BoqFilter): boolean {
   }
 }
 
-export const initialSections: BoqSection[] = [
-  {
-    id: "s1",
-    ordinal: "01",
-    title: "Substructure",
-    positions: [
-      {
-        id: "p1",
-        ordinal: "01.01.0010",
-        description: "Excavation for foundations",
-        unit: "m³",
-        quantity: 120,
-        unitRate: 450,
-      },
-      {
-        id: "p2",
-        ordinal: "01.01.0020",
-        description: "Reinforced concrete C25/30",
-        unit: "m³",
-        quantity: 45,
-        unitRate: 6200,
-      },
-    ],
-  },
-  {
-    id: "s2",
-    ordinal: "02",
-    title: "Superstructure",
-    positions: [
-      {
-        id: "p3",
-        ordinal: "02.01.0010",
-        description: "Hollow block walls 200mm",
-        unit: "m²",
-        quantity: 0,
-        unitRate: 0,
-      },
-    ],
-  },
-];
 /** Next free position ordinal: highest trailing number + 10, never a duplicate. */
 export function nextPositionOrdinal(section: BoqSection): string {
   let max = 0;
@@ -98,14 +59,13 @@ export function nextPositionOrdinal(section: BoqSection): string {
   return `${section.ordinal}.01.${String(max + 10).padStart(4, "0")}`;
 }
 
-/** Next free top-level section ordinal ("01", "02", ...). */
 export function nextSectionOrdinal(sections: BoqSection[]): string {
-  const used = new Set(sections.map((s) => s.ordinal));
-  let n = Math.max(0, ...sections.map((s) => parseInt(s.ordinal, 10) || 0)) + 1;
+  const top = sections.filter((s) => !s.parentId);
+  const used = new Set(top.map((s) => s.ordinal));
+  let n = Math.max(0, ...top.map((s) => parseInt(s.ordinal, 10) || 0)) + 1;
   while (used.has(String(n).padStart(2, "0"))) n++;
   return String(n).padStart(2, "0");
 }
-
 /** Parses "1.234,56", "1,234.56", "1 234,56", "12,5". Returns NaN if unreadable. */
 export function parseNumber(raw: string): number {
   let s = raw.replace(/[^\d.,-]/g, "");
@@ -123,4 +83,79 @@ export function parseNumber(raw: string): number {
     s = isThousands ? s.replace(",", "") : s.replace(",", ".");
   }
   return s === "" ? NaN : Number(s);
+}
+/** Direct children of a section, in array order. */
+export const childrenOf = (all: BoqSection[], id: string) =>
+  all.filter((s) => s.parentId === id);
+
+/** The section's id plus the ids of all its descendants. */
+export function subtreeIds(all: BoqSection[], id: string): string[] {
+  return [id, ...childrenOf(all, id).flatMap((c) => subtreeIds(all, c.id))];
+}
+
+/** Total of a section including every nested sub-section. */
+export function subtreeTotal(all: BoqSection[], id: string): number {
+  const ids = new Set(subtreeIds(all, id));
+  return all
+    .filter((s) => ids.has(s.id))
+    .reduce((n, s) => n + sectionTotal(s), 0);
+}
+
+/** Depth-first order so each sub-section sits under its parent. */
+export function flattenSections(
+  all: BoqSection[],
+  parentId: string | null = null,
+  depth = 0,
+): { section: BoqSection; depth: number }[] {
+  return all
+    .filter((s) => (s.parentId ?? null) === parentId)
+    .flatMap((s) => [
+      { section: s, depth },
+      ...flattenSections(all, s.id, depth + 1),
+    ]);
+}
+
+export function hasCollapsedAncestor(
+  all: BoqSection[],
+  s: BoqSection,
+  collapsed: Set<string>,
+): boolean {
+  let p = all.find((x) => x.id === s.parentId);
+  while (p) {
+    if (collapsed.has(p.id)) return true;
+    const pid = p.parentId;
+    p = pid ? all.find((x) => x.id === pid) : undefined;
+  }
+  return false;
+}
+
+/** Next sub-section ordinal under a parent: "01" -> "01.01", "01.02", ... */
+export function nextSubOrdinal(all: BoqSection[], parent: BoqSection): string {
+  let max = 0;
+  for (const c of childrenOf(all, parent.id)) {
+    const last = Number(c.ordinal.split(".").pop());
+    if (Number.isFinite(last)) max = Math.max(max, last);
+  }
+  return `${parent.ordinal}.${String(max + 1).padStart(2, "0")}`;
+}
+/** Moves a section (with its subtree) before/after a target section.
+    The moved section takes the target's parent, so this also re-parents. */
+
+export function moveSection(
+  all: BoqSection[],
+  dragId: string,
+  targetId: string,
+  pos: "before" | "after",
+): BoqSection[] {
+  if (dragId === targetId) return all;
+  if (subtreeIds(all, dragId).includes(targetId)) return all; // no drop into own subtree
+  const drag = all.find((s) => s.id === dragId);
+  const target = all.find((s) => s.id === targetId);
+  if (!drag || !target) return all;
+
+  const moved: BoqSection = { ...drag, parentId: target.parentId ?? null };
+  const rest = all.filter((s) => s.id !== dragId);
+  const idx = rest.findIndex((s) => s.id === targetId);
+  const at = pos === "before" ? idx : idx + 1;
+  return [...rest.slice(0, at), moved, ...rest.slice(at)];
 }

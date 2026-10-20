@@ -58,7 +58,7 @@ function mapBoq(b: ApiBoq): Boq {
   };
 }
 
-async function authedFetch(path: string) {
+export async function authedFetch(path: string) {
   const token = (await cookies()).get("access_token")?.value;
   if (!token) redirect("/login");
 
