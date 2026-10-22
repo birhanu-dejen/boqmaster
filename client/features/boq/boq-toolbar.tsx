@@ -1,18 +1,22 @@
 "use client";
 
+import { useState } from "react";
 import {
   AlertTriangle,
   Banknote,
   ChevronsDownUp,
   ChevronsUpDown,
+  Download,
   Hash,
   Layers,
+  Loader2,
   Search,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BoqFilter } from "@/lib/boq";
+import { downloadBoqExcel } from "@/lib/api/boq-export";
 
 const FILTERS: { key: BoqFilter; label: string; icon: typeof Hash }[] = [
   { key: "errors", label: "Errors", icon: AlertTriangle },
@@ -21,6 +25,8 @@ const FILTERS: { key: BoqFilter; label: string; icon: typeof Hash }[] = [
 ];
 
 export function BoqToolbar({
+  boqId,
+  boqName,
   search,
   onSearch,
   active,
@@ -32,6 +38,8 @@ export function BoqToolbar({
   onToggleCollapseAll,
   onAddSection,
 }: {
+  boqId: string;
+  boqName: string;
   search: string;
   onSearch: (v: string) => void;
   active: Set<BoqFilter>;
@@ -44,6 +52,20 @@ export function BoqToolbar({
   onAddSection: () => void;
 }) {
   const narrowing = search.trim() !== "" || active.size > 0;
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await downloadBoqExcel(boqId, boqName);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <section
@@ -56,6 +78,25 @@ export function BoqToolbar({
           <Layers className="size-3.5" />
           Add section
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={handleExport}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Download className="size-3.5" />
+          )}
+          Export Excel
+        </Button>
+        {exportError && (
+          <span role="alert" className="text-xs text-destructive">
+            {exportError}
+          </span>
+        )}
       </div>
 
       {/* Row 2: search + filters */}

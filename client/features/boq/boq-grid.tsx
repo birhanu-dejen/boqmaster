@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { boqApi } from "@/lib/api/boq";
 import {
-  BOQ_COLS,
   flattenSections,
   formatMoney,
   grandTotal,
@@ -22,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BoqToolbar } from "./boq-toolbar";
 import {
+  BOQ_GRID,
   PositionRow,
   SectionRow,
   type PositionPatch,
@@ -297,6 +297,8 @@ export function BoqGrid({
 
       <div className="flex flex-wrap items-stretch gap-3">
         <BoqToolbar
+          boqId={String(boqId)}
+          boqName="boq"
           search={search}
           onSearch={setSearch}
           active={filters}
@@ -319,9 +321,9 @@ export function BoqGrid({
         {/* Grand total card */}
         <section
           aria-label="Grand total"
-          className="flex min-w-52 shrink-0 flex-col justify-center gap-1 rounded-xl border bg-card px-4 py-2.5 shadow-xs"
+          className="flex min-w-56 shrink-0 flex-col justify-center gap-1 rounded-xl border bg-card px-5 py-3 shadow-xs"
         >
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Grand total
           </span>
           <span className="text-2xl font-bold leading-none tabular-nums">
@@ -338,8 +340,8 @@ export function BoqGrid({
           {/* Column header */}
           <div
             className={cn(
-              "grid items-center gap-2 border-b bg-muted/40 px-3 py-2.5 text-xs font-medium text-muted-foreground",
-              BOQ_COLS,
+              "sticky top-0 z-10 grid items-center gap-2 border-b border-l-2 border-l-transparent bg-muted/70 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur",
+              BOQ_GRID,
             )}
           >
             {HEADERS.map((h, i) =>
@@ -357,9 +359,10 @@ export function BoqGrid({
                 <span
                   key={i}
                   className={cn(
+                    "px-1.5",
                     RIGHT_ALIGNED.has(h)
                       ? "text-right"
-                      : h === "Unit"
+                      : h === "Unit" || h === "Description"
                         ? "text-center"
                         : "",
                   )}
@@ -372,7 +375,7 @@ export function BoqGrid({
 
           {/* Body */}
           {visible.length === 0 ? (
-            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+            <p className="px-4 py-16 text-center text-sm text-muted-foreground">
               {sections.length === 0
                 ? 'No sections yet. Click "Add section" to start.'
                 : "No positions match. Clear the search or filters to see all lines."}
@@ -420,6 +423,7 @@ export function BoqGrid({
                       <PositionRow
                         key={p.id}
                         position={p}
+                        depth={depth}
                         selected={selected.has(p.id)}
                         onSelect={(checked) =>
                           setSelected((prev) => {
@@ -441,11 +445,11 @@ export function BoqGrid({
           )}
 
           {/* Footer */}
-          <div className="flex items-center justify-between bg-muted/40 px-4 py-3 text-sm">
-            <span className="text-muted-foreground">
+          <div className="flex items-center justify-between border-t-2 bg-muted/60 px-4 py-3 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {selected.size > 0 ? `${selected.size} selected` : "Direct cost"}
             </span>
-            <span className="text-base font-semibold tabular-nums">
+            <span className="text-base font-bold tabular-nums">
               {formatMoney(total)}
             </span>
           </div>

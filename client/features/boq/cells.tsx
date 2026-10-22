@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const base =
-  "w-full rounded-sm bg-transparent px-1.5 py-1 text-sm outline-none transition-colors " +
+  "w-full rounded-sm bg-transparent px-1.5 py-1 text-xs outline-none transition-colors " +
   "hover:bg-muted focus:bg-background focus:ring-2 focus:ring-primary/40";
 
 /** Click-to-edit text cell. Enter or blur commits, Escape reverts. */

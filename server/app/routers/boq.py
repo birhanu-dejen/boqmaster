@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
+from fastapi.responses import StreamingResponse
+from app.services.boq_export import build_boq_xlsx, export_filename
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.models.boq import Boq
@@ -241,3 +242,17 @@ def delete_position(
 ):
     db.delete(_owned_position(db, position_id, user))
     _commit(db)
+@router.get("/boqs/{boq_id}/export")
+def export_boq(
+    boq_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    boq = _owned_boq(db, boq_id, user)
+    return StreamingResponse(
+        build_boq_xlsx(boq),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{export_filename(boq)}"'
+        },
+    )    
