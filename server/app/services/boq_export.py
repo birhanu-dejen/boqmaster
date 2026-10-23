@@ -1,10 +1,20 @@
 """Excel (.xlsx) export for a BOQ.
 
-Section and position totals are written as real Excel formulas, so the sheet
+Layout mirrors the BOQ UI / reference export:
+
+    title / app name / summary line
+    column headers
+    per section: section row (with total), positions, "Subtotal: ..." row, blank row
+    COST SUMMARY: Direct Cost, markups (optional), Net Total, + VAT, GROSS TOTAL
+    footer
+
+Section, subtotal and summary figures are real Excel formulas, so the sheet
 stays editable and recalculates when a quantity or rate is changed.
 """
 
 import re
+from datetime import date
+from decimal import Decimal
 from io import BytesIO
 
 from openpyxl import Workbook
@@ -14,20 +24,21 @@ from openpyxl.utils import get_column_letter
 from app.models.boq import Boq
 from app.models.boq_section import BoqSection
 
-HEADERS = ["Pos.", "Description", "Unit", "Quantity", "Unit Rate", "Total"]
-COL_WIDTHS = [16, 52, 9, 14, 16, 18]
-NUM_FMT = "#,##0.00"
-QTY_FMT = "#,##0.00##"
+APP_NAME = "Boqmaster"
+APP_URL = "Boqmaster.com"
 
-HEADER_FILL = PatternFill("solid", fgColor="1F2937")
-SECTION_FILLS = [
-    PatternFill("solid", fgColor="E5E7EB"),  # top level
-    PatternFill("solid", fgColor="F3F4F6"),  # sub-section
-    PatternFill("solid", fgColor="F9FAFB"),  # deeper
-]
+HEADERS = ["No.", "Description", "Unit", "Quantity", "Unit Rate", "Total"]
+COL_WIDTHS = [14, 56, 9, 14, 16, 18]
+NUM_FMT = "#,##0.00"
+
+SECTION_FILL = PatternFill("solid", fgColor="F3F4F6")
+HEADER_BORDER = Border(bottom=Side(style="thin", color="9CA3AF"))
 THIN = Side(style="thin", color="D1D5DB")
 BOTTOM = Border(bottom=THIN)
-TOP_BOTTOM = Border(top=Side(style="medium", color="111827"), bottom=THIN)
+GROSS_BORDER = Border(
+    top=Side(style="medium", color="111827"),
+    bottom=Side(style="double", color="111827"),
+)
 
 
 def export_filename(boq: Boq) -> str:
@@ -43,23 +54,62 @@ def _children(boq: Boq, parent_id: int | None) -> list[BoqSection]:
     )
 
 
+def _section_total(boq: Boq, section: BoqSection) -> Decimal:
+    own = sum(
+        (Decimal(str(p.quantity)) * Decimal(str(p.unit_rate)) for p in section.positions),
+        Decimal(0),
+    )
+    return own + sum((_section_total(boq, c) for c in _children(boq, section.id)), Decimal(0))
+
+
+def _markups(boq: Boq) -> list:
+    """Optional markups (overhead, profit, ...). Each needs `name` and `percentage`."""
+    return list(getattr(boq, "markups", None) or [])
+
+
+def _vat_rate(boq: Boq) -> Decimal:
+    return Decimal(str(getattr(boq, "vat_rate", 0) or 0))
+
+
+def _fmt_date(d: date) -> str:
+    return f"{d:%B} {d.day}, {d.year}"
+
+
 def build_boq_xlsx(boq: Boq) -> BytesIO:
     wb = Workbook()
     ws = wb.active
     ws.title = "BOQ"
 
-    # ── title block ────────────────────────────────────────────────
-    ws["A1"] = boq.name
-    ws["A1"].font = Font(bold=True, size=14)
-    ws["A2"] = f"Currency: {boq.currency}"
-    ws["A2"].font = Font(color="6B7280")
+    today = date.today()
+    top_sections = _children(boq, None)
 
-    # ── column headers ─────────────────────────────────────────────
-    header_row = 4
+    # ── summary figures for the header line (cells below stay formulas) ──
+    direct_cost = sum((_section_total(boq, s) for s in top_sections), Decimal(0))
+    markups = _markups(boq)
+    net_total = direct_cost + sum(
+        (direct_cost * Decimal(str(m.percentage)) / 100 for m in markups), Decimal(0)
+    )
+    vat_rate = _vat_rate(boq)
+    gross_total = net_total + net_total * vat_rate / 100
+    n_sections = len(boq.sections)
+    n_positions = sum(len(s.positions) for s in boq.sections)
+
+    # ── title block ────────────────────────────────────────────────
+    ws["A1"] = f"BILL OF QUANTITIES - {boq.name}"
+    ws["A1"].font = Font(bold=True, size=13)
+    ws["A2"].font = Font(color="6B7280")
+    ws["A3"] = (
+        f"Date: {_fmt_date(today)}  |  {n_sections} sections  |  "
+        f"{n_positions} positions  |  Gross Total: {gross_total:,.2f}"
+    )
+    ws["A3"].font = Font(color="6B7280")
+
+    # ── column headers (row 5) ─────────────────────────────────────
+    header_row = 5
     for col, label in enumerate(HEADERS, start=1):
         c = ws.cell(row=header_row, column=col, value=label)
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = HEADER_FILL
+        c.font = Font(bold=True)
+        c.border = HEADER_BORDER
         c.alignment = Alignment(
             horizontal="right" if col >= 4 else "left", vertical="center"
         )
@@ -70,20 +120,22 @@ def build_boq_xlsx(boq: Boq) -> BytesIO:
     row = header_row + 1
 
     def write_section(section: BoqSection, depth: int) -> int:
-        """Writes a section, its positions and sub-sections.
+        """Writes section row, positions, nested sections and subtotal row.
         Returns the row holding the section's total (own + nested)."""
         nonlocal row
         section_row = row
         row += 1
 
-        fill = SECTION_FILLS[min(depth, len(SECTION_FILLS) - 1)]
-        a = ws.cell(row=section_row, column=1, value=section.ordinal)
-        a.alignment = Alignment(indent=depth)
-        ws.cell(row=section_row, column=2, value=section.title.upper())
+        ws.cell(row=section_row, column=1, value=section.ordinal).alignment = Alignment(
+            indent=depth
+        )
+        ws.cell(row=section_row, column=2, value=section.title).alignment = Alignment(
+            indent=depth
+        )
         for col in range(1, 7):
             c = ws.cell(row=section_row, column=col)
             c.font = Font(bold=True)
-            c.fill = fill
+            c.fill = SECTION_FILL
             c.border = BOTTOM
 
         # positions
@@ -91,15 +143,15 @@ def build_boq_xlsx(boq: Boq) -> BytesIO:
         first_pos = row
         for p in positions:
             ws.cell(row=row, column=1, value=p.ordinal).alignment = Alignment(
-                indent=depth + 1
+                indent=depth
             )
             d = ws.cell(row=row, column=2, value=p.description)
-            d.alignment = Alignment(wrap_text=True, vertical="top")
+            d.alignment = Alignment(wrap_text=True, vertical="top", indent=depth)
             ws.cell(row=row, column=3, value=p.unit).alignment = Alignment(
-                horizontal="center"
+                horizontal="left"
             )
             q = ws.cell(row=row, column=4, value=float(p.quantity))
-            q.number_format = QTY_FMT
+            q.number_format = NUM_FMT
             r = ws.cell(row=row, column=5, value=float(p.unit_rate))
             r.number_format = NUM_FMT
             t = ws.cell(row=row, column=6, value=f"=D{row}*E{row}")
@@ -118,25 +170,79 @@ def build_boq_xlsx(boq: Boq) -> BytesIO:
             parts.append(f"SUM(F{first_pos}:F{last_pos})")
         parts += [f"F{r}" for r in child_rows]
         total = ws.cell(
-            row=section_row, column=6, value="=" + "+".join(parts) if parts else 0
+            row=section_row, column=6, value=("=" + "+".join(parts)) if parts else 0
         )
         total.number_format = NUM_FMT
+
+        # subtotal row
+        sub = ws.cell(row=row, column=2, value=f"Subtotal: {section.title}")
+        sub.font = Font(bold=True)
+        sub.alignment = Alignment(indent=depth)
+        st = ws.cell(row=row, column=6, value=f"=F{section_row}")
+        st.number_format = NUM_FMT
+        st.font = Font(bold=True)
+        row += 2  # subtotal row + blank spacer row
         return section_row
 
-    top_rows = [write_section(s, 0) for s in _children(boq, None)]
+    top_rows = [write_section(s, 0) for s in top_sections]
 
-    # ── grand total ────────────────────────────────────────────────
-    ws.cell(row=row, column=2, value="DIRECT COST")
-    gt = ws.cell(
+    # ── cost summary ───────────────────────────────────────────────
+    row += 1  # extra spacer, matches the reference layout
+    ws.cell(row=row, column=2, value="COST SUMMARY").font = Font(bold=True, size=12)
+    row += 1
+
+    direct_row = row
+    ws.cell(row=row, column=2, value="Direct Cost")
+    c = ws.cell(
         row=row,
         column=6,
-        value="=" + "+".join(f"F{r}" for r in top_rows) if top_rows else 0,
+        value=("=" + "+".join(f"F{r}" for r in top_rows)) if top_rows else 0,
     )
-    gt.number_format = NUM_FMT
+    c.number_format = NUM_FMT
+    row += 1
+
+    markup_rows = []
+    for m in markups:
+        pct = Decimal(str(m.percentage))
+        ws.cell(row=row, column=2, value=f"+ {m.name} ({pct.normalize():f}%)")
+        c = ws.cell(row=row, column=6, value=f"=F{direct_row}*{float(pct) / 100}")
+        c.number_format = NUM_FMT
+        markup_rows.append(row)
+        row += 1
+
+    row += 1  # blank
+    net_row = row
+    ws.cell(row=row, column=2, value="Net Total").font = Font(bold=True)
+    c = ws.cell(
+        row=row,
+        column=6,
+        value="=" + "+".join([f"F{direct_row}"] + [f"F{r}" for r in markup_rows]),
+    )
+    c.number_format = NUM_FMT
+    c.font = Font(bold=True)
+    row += 1
+
+    vat_row = row
+    ws.cell(row=row, column=2, value=f"+ VAT ({vat_rate.normalize():f}%)")
+    c = ws.cell(row=row, column=6, value=f"=F{net_row}*{float(vat_rate) / 100}")
+    c.number_format = NUM_FMT
+    row += 2  # blank
+
+    ws.cell(row=row, column=2, value="GROSS TOTAL")
+    c = ws.cell(row=row, column=6, value=f"=F{net_row}+F{vat_row}")
+    c.number_format = NUM_FMT
     for col in range(1, 7):
-        c = ws.cell(row=row, column=col)
-        c.font = Font(bold=True, size=12)
-        c.border = TOP_BOTTOM
+        cell = ws.cell(row=row, column=col)
+        cell.font = Font(bold=True, size=12)
+        cell.border = GROSS_BORDER
+    row += 2
+
+    # ── footer ─────────────────────────────────────────────────────
+    ws.cell(
+        row=row,
+        column=1,
+        
+    ).font = Font(color="6B7280", size=9)
 
     # ── print setup ────────────────────────────────────────────────
     ws.page_setup.orientation = "portrait"

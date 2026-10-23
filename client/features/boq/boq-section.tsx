@@ -136,7 +136,11 @@ export function SectionRow({
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand section" : "Collapse section"}
           title={collapsed ? "Expand section" : "Collapse section"}
-          className="flex shrink-0 items-center rounded-md p-1 text-primary transition-colors hover:bg-background"
+          className={cn(
+            "flex shrink-0 items-center rounded-md p-1 transition-colors hover:bg-background",
+            // blue only while the section is open; default color when collapsed
+            collapsed ? "text-foreground/80" : "text-primary",
+          )}
         >
           <FolderIcon className="size-4" />
           {collapsed ? (
